@@ -4,7 +4,7 @@
 ! it disables all interrupts, changes to protected mode, and calls the 
 
 BOOTSEG = 0x07c0
-SYSSEG  = 0x1000			! system loaded at 0x10000 (65536).
+SYSSEG  = 0x2000			! system loaded at 0x10000 (65536).
 SYSLEN  = 1				! sectors occupied.
 
 entry start
@@ -57,17 +57,17 @@ gdt:	.word	0,0,0,0		! dummy
 
 	.word	0x07FF		! 0x08 8Mb - limit=2047 (2048*4096=8Mb)
 	.word	0x0000		! base address=0x10000
-	.word	0x9A01		! code read/exec
+	.word	0x9A02		! code read/exec
 	.word	0x00C0		! granularity=4096, 386
 
 	.word	0x07FF		! 0x10 8Mb - limit=2047 (2048*4096=8Mb)
 	.word	0x0000		! base address=0x10000
-	.word	0x9201		! data read/write
+	.word	0x9202		! data read/write
 	.word	0x00C0		! granularity=4096, 386
 
 	.word   0x0002		! screen 0x18 - for display
-	.word   0x8000
-	.word   0x920b
+	.word   0x2900
+	.word   0x9200
 	.word   0x00c0
 
 gdt_48: .word	0x7ff		! gdt limit=2048, 256 GDT entries
