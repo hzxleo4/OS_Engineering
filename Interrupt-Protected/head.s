@@ -1,7 +1,7 @@
 #  head.s contains the 32-bit startup code.
 #  Two L3 task multitasking. The code of tasks are in kernel area, 
 #  just like the Linux. The kernel code is located at 0x10000. 
-SCRN_SEL	= 0x18
+SCRN_SEL	= 0x28
 
 .global startup_32
 .text
@@ -71,24 +71,24 @@ div_error_exception:
 
 	mov $SCRN_SEL, %bx
 	mov %bx,%ds
-	movb $68,3840
-	movb $0x1e,3841
-	movb $73,3842
-	movb $0x1e,3843
-	movb $86,3844
-	movb $0x1e,3845
-	movb $45,3846
-	movb $0x1e,3847
-	movb $69,3848
-	movb $0x1e,3849
-	movb $82,3850
-	movb $0x1e,3851
-	movb $82,3852
-	movb $0x1e,3853
-	movb $79,3854
-	movb $0x1e,3855
-	movb $82,3856
-	movb $0x1e,3857
+	movb $68,3860
+	movb $0x1e,3861
+	movb $73,3862
+	movb $0x1e,3863
+	movb $86,3864
+	movb $0x1e,3865
+	movb $45,3866
+	movb $0x1e,3867
+	movb $69,3868
+	movb $0x1e,3869
+	movb $82,3870
+	movb $0x1e,3871
+	movb $82,3872
+	movb $0x1e,3873
+	movb $79,3874
+	movb $0x1e,3875
+	movb $82,3876
+	movb $0x1e,3877
 	loop_div: jmp loop_div
 
 
