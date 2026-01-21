@@ -49,8 +49,47 @@ reload:
 	movl %eax,(%esi) 
 	movl %edx,4(%esi)
 
+	# set idt to handle division error exception (entry 0)
+	movl $0x00080000, %eax
+	movw $div_error_exception, %ax
+	movl $0x8E00, %edx
+	movl $0x00, %ecx
+	lea idt(,%ecx,8), %esi
+	movl %eax,(%esi)
+	movl %edx,4(%esi)
+
+	# Trigger division error exception
+	movl $1234,%eax
+	xor %ecx, %ecx
+	div %ecx
+
 	# jump to an illegal address and cpu will trigger an exception
 	jmp 8192
+
+
+div_error_exception:
+
+	mov $SCRN_SEL, %bx
+	mov %bx,%ds
+	movb $68,3840
+	movb $0x1e,3841
+	movb $73,3842
+	movb $0x1e,3843
+	movb $86,3844
+	movb $0x1e,3845
+	movb $45,3846
+	movb $0x1e,3847
+	movb $69,3848
+	movb $0x1e,3849
+	movb $82,3850
+	movb $0x1e,3851
+	movb $82,3852
+	movb $0x1e,3853
+	movb $79,3854
+	movb $0x1e,3855
+	movb $82,3856
+	movb $0x1e,3857
+	loop_div: jmp loop_div
 
 
 outofbound_exception:
