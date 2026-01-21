@@ -71,24 +71,24 @@ div_error_exception:
 
 	mov $SCRN_SEL, %bx
 	mov %bx,%ds
-	movb $68,3860
-	movb $0x1e,3861
-	movb $73,3862
-	movb $0x1e,3863
-	movb $86,3864
-	movb $0x1e,3865
-	movb $45,3866
-	movb $0x1e,3867
-	movb $69,3868
-	movb $0x1e,3869
-	movb $82,3870
-	movb $0x1e,3871
-	movb $82,3872
-	movb $0x1e,3873
-	movb $79,3874
-	movb $0x1e,3875
-	movb $82,3876
-	movb $0x1e,3877
+	movb $68,3914
+	movb $0x1e,3915
+	movb $73,3916
+	movb $0x1e,3917
+	movb $86,3918
+	movb $0x1e,3919
+	movb $45,3920
+	movb $0x1e,3921
+	movb $69,3922
+	movb $0x1e,3923
+	movb $82,3924
+	movb $0x1e,3925
+	movb $82,3926
+	movb $0x1e,3927
+	movb $79,3928
+	movb $0x1e,3929
+	movb $82,3930
+	movb $0x1e,3931
 	loop_div: jmp loop_div
 
 
