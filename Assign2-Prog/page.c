@@ -19,8 +19,8 @@ void set_task0_paging(){
 		init_page_entry = init_page_entry + 0x1000;
 	}
 
-	/* Keep user ESP=0x60000 but avoid mapping to legacy memory below 1MB. */
-	pg0_task0[0x60] = 0x110000 + 0x07;
+	/* ESP starts at 0x60000, so first push touches page 0x5F000. */
+	pg0_task0[0x5f] = 0x110000 + 0x07;
 
 }
 
@@ -32,7 +32,7 @@ void set_task1_paging(){
 		init_page_entry = init_page_entry + 0x1000;
 	}
 
-	pg0_task1[0x70] = 0x120000 + 0x07;
+	pg0_task1[0x6f] = 0x120000 + 0x07;
 
 }
 
@@ -44,7 +44,7 @@ void set_task2_paging(){
 		init_page_entry = init_page_entry + 0x1000;
 	}
 
-	pg0_task2[0x80] = 0x130000 + 0x07;
+	pg0_task2[0x7f] = 0x130000 + 0x07;
 
 }
 
@@ -56,7 +56,7 @@ void set_task3_paging(){
 		init_page_entry = init_page_entry + 0x1000;
 	}
 
-	pg0_task3[0x90] = 0x140000 + 0x07;
+	pg0_task3[0x8f] = 0x140000 + 0x07;
 
 }
 
@@ -68,7 +68,7 @@ void set_task4_paging(){
 		init_page_entry = init_page_entry + 0x1000;
 	}
 
-	pg0_task4[0xA0] = 0x150000 + 0x07;
+	pg0_task4[0x9f] = 0x150000 + 0x07;
 
 }
 
