@@ -11,9 +11,9 @@ extern pte_t pg1[1024];
 
 extern pte_t pg_dir_task0;
 extern pte_t pg_dir_task1;
-extern pte_t pg_dir_task2;
-extern pte_t pg_dir_task3;
-extern pte_t pg_dir_task4;
+extern pte_t pg_dir_task2[1024];
+extern pte_t pg_dir_task3[1024];
+extern pte_t pg_dir_task4[1024];
 
 extern pte_t pg0_task1[1024];
 extern pte_t pg0_task2[1024];

@@ -80,19 +80,19 @@ void init_tasks() {
 	task1->ip = (u32)&new_task_next_ip;
 
 	task2->pid = 2;
-	task2->pg_dir = (pte_t)&pg_dir_task2 - PAGE_OFFSET;
+	task2->pg_dir = (pte_t)pg_dir_task2 - PAGE_OFFSET;
 	task2->sp0 = (u32)&stack2_krn_ptr;
 	task2->sp = (u32)&stack2_krn_ptr - sizeof(void *) * 10;
 	task2->ip = (u32)&new_task_next_ip;
 
 	task3->pid = 3;
-	task3->pg_dir = (pte_t)&pg_dir_task3 - PAGE_OFFSET;
+	task3->pg_dir = (pte_t)pg_dir_task3 - PAGE_OFFSET;
 	task3->sp0 = (u32)&stack3_krn_ptr;
 	task3->sp = (u32)&stack3_krn_ptr - sizeof(void *) * 10;
 	task3->ip = (u32)&new_task_next_ip;
 
 	task4->pid = 4;
-	task4->pg_dir = (pte_t)&pg_dir_task4 - PAGE_OFFSET;
+	task4->pg_dir = (pte_t)pg_dir_task4 - PAGE_OFFSET;
 	task4->sp0 = (u32)&stack4_krn_ptr;
 	task4->sp = (u32)&stack4_krn_ptr - sizeof(void *) * 10;
 	task4->ip = (u32)&new_task_next_ip;
@@ -125,13 +125,13 @@ void kernel_main() {
 	set_page_directory(&pg_dir_task1, (void*)pg0_task1, (void*)pg1);
 
 	set_task2_paging();
-	set_page_directory(&pg_dir_task2, (void*)pg0_task2, (void*)pg1);
+	set_page_directory(pg_dir_task2, (void*)pg0_task2, (void*)pg1);
 
 	set_task3_paging();
-	set_page_directory(&pg_dir_task3, (void*)pg0_task3, (void*)pg1);
+	set_page_directory(pg_dir_task3, (void*)pg0_task3, (void*)pg1);
 
 	set_task4_paging();
-	set_page_directory(&pg_dir_task4, (void*)pg0_task4, (void*)pg1);
+	set_page_directory(pg_dir_task4, (void*)pg0_task4, (void*)pg1);
 
 	init_tasks();
 

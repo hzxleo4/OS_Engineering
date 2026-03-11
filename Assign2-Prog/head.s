@@ -13,7 +13,7 @@ PAGE_OFFSET = 0x80000000
 .global move_to_user_mode, systemcall_interrupt, timer_interrupt,set_cr3_test
 .global idt,gdt,tss0,ldt0,pg_dir,pg0,pg1,pg2,pg3,stack0_krn_ptr,stack0_ptr,myjump,finish_paging,set_cr3
 .global pg0_task1,pg1_task1,setup_paging,pg_dir_task1,before_task1_paging,stack1_ptr,stack1_krn_ptr,pg0_task0, pg_dir_task0, new_task_next_ip
-.global pg_dir_task2,pg0_task2,stack2_krn_ptr,pg_dir_task3,pg0_task3,stack3_krn_ptr,pg_dir_task4,pg0_task4,stack4_krn_ptr
+.global stack2_krn_ptr,stack3_krn_ptr,stack4_krn_ptr
 
 .text
 startup_32:
@@ -338,27 +338,5 @@ pg_dir_task1:
 pg0_task1:
 
 .org 0x9000
-
-pg_dir_task2:
-
-.org 0xA000
-
-pg0_task2:
-
-.org 0xB000
-
-pg_dir_task3:
-
-.org 0xC000
-
-pg0_task3:
-
-.org 0xD000
-
-pg_dir_task4:
-
-.org 0xE000
-
-pg0_task4:
 
 
