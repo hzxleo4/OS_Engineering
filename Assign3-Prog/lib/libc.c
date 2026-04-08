@@ -13,17 +13,32 @@ typedef struct block_header {
     u8 _unused[4];
 } block_header_t;
 
-static block_header_t* free_list = NULL;   // 空闲链表头
+static block_header_t* free_list = NULL;   // 堆块链表头
 static void* heap_start = NULL;            // 堆起始地址（页对齐）
 static void* heap_brk = NULL;              // 当前堆顶（页对齐）
 
-// 将新扩展的区域作为一个空闲块加入链表
+// 将新扩展的区域作为一个空闲块加入链表尾部，保持地址顺序
 static void add_free_block(void* addr, u32 size) {
     block_header_t* block = (block_header_t*)addr;
     block->size = size;
     block->used = 0;
-    block->next = free_list;
-    free_list = block;
+    block->next = NULL;
+
+    if (free_list == NULL) {
+        free_list = block;
+        return;
+    }
+
+    block_header_t* curr = free_list;
+    while (curr->next != NULL) {
+        curr = curr->next;
+    }
+
+    if (!curr->used && ((char*)curr + curr->size == (char*)block)) {
+        curr->size += size;
+    } else {
+        curr->next = block;
+    }
 }
 
 // 扩展堆：至少分配 need 字节，以页为单位扩展，并将新区域加入空闲链表
@@ -60,19 +75,59 @@ void* malloc(u32 size) {
         if (grow_heap(PAGE_SIZE) == -1) return NULL;
     }
 
-    //
-    // Your Code Here
-    //
+    while (1) {
+        block_header_t* curr = free_list;
 
+        while (curr != NULL) {
+            if (!curr->used && curr->size >= total_size) {
+                u32 remain = curr->size - total_size;
 
-    // 理论上不会执行到这里（因为新页面至少 PAGE_SIZE 字节，应满足请求）
-    return NULL;
+                if (remain >= sizeof(block_header_t) + 8) {
+                    block_header_t* new_block = (block_header_t*)((char*)curr + total_size);
+                    new_block->size = remain;
+                    new_block->used = 0;
+                    new_block->next = curr->next;
+
+                    curr->size = total_size;
+                    curr->next = new_block;
+                }
+
+                curr->used = 1;
+                return (void*)(curr + 1);
+            }
+            curr = curr->next;
+        }
+
+        if (grow_heap(total_size) == -1) {
+            return NULL;
+        }
+    }
 }
 
 void free(void *ptr) {
     if (ptr == NULL) return;
 
-    //
-    // Your Code Here
-    //
- }
+    block_header_t* prev = NULL;
+    block_header_t* curr = free_list;
+
+    while (curr != NULL) {
+        if ((void*)(curr + 1) == ptr) {
+            curr->used = 0;
+
+            if (curr->next != NULL && !curr->next->used &&
+                ((char*)curr + curr->size == (char*)curr->next)) {
+                curr->size += curr->next->size;
+                curr->next = curr->next->next;
+            }
+
+            if (prev != NULL && !prev->used &&
+                ((char*)prev + prev->size == (char*)curr)) {
+                prev->size += curr->size;
+                prev->next = curr->next;
+            }
+            return;
+        }
+        prev = curr;
+        curr = curr->next;
+    }
+}
