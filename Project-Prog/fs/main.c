@@ -147,6 +147,9 @@ PUBLIC int sys_mkdir(char *pathname)
           You can use kmalloc(super_b->block_size) in kernel/page.c to allocate a buffer.
           For example: block_buf = (u8 *)kmalloc(super_b->block_size); */
     block_buf = (u8 *)kmalloc(super_b->block_size);
+    if (!block_buf) {
+        return -1;
+    }
     memset(block_buf, 0, super_b->block_size);
     struct dir_entry *de = (struct dir_entry *)block_buf;
     de[0].inode_nr = inode_nr;
@@ -194,8 +197,14 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
     int block_size = BLOCK_SIZE;
     int bytes_done = 0;
     int bytes_target;
+    u8 *block_buf;
 
     if (!inode) {
+        return -1;
+    }
+
+    block_buf = (u8 *)kmalloc(block_size);
+    if (!block_buf) {
         return -1;
     }
 
@@ -225,8 +234,6 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
         int in_block_off = cur_pos & (block_size - 1);
         int chunk = min(bytes_target - bytes_done, block_size - in_block_off);
         int phys_block = get_block_nr(inode, logical);
-        u8 *block_buf = (u8 *)kmalloc(block_size);
-
         if (io_type == WRITE && phys_block <= 0) {
             phys_block = alloc_block_for_inode(inode, logical);
             if (phys_block < 0) {

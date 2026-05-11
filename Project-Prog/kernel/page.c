@@ -76,6 +76,9 @@ u32 alloc_phys_pages(u32 size) {
  */
 u32 kmalloc(int size) {
 	u32 page = alloc_phys_pages(size);
+	if (page == 0) {
+		return 0;
+	}
 	u32 page_virtual = page + PAGE_OFFSET;
 	return (page_virtual);
 }
