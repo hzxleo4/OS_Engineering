@@ -12,9 +12,9 @@ void main() {
 
 	mkdir("/a");
 	mkdir("/a/ab");
-	mkdir("/a/ac");
-	mkdir("/a/ab/bbb");
-	mkdir("/a/ac/ccc");
+	// mkdir("/a/ac");
+	// mkdir("/a/ab/bbb");
+	// mkdir("/a/ac/ccc");
 
 	int fd = 0;
 	printx("\nBefore open");
