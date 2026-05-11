@@ -24,9 +24,10 @@ void main() {
 	int ret = 0;
 	int write_cnt = 6;
 	const char bufw [] = "abcdef"; 
-
+	printx("\nBefore write, the buf is ");
+	printx(bufw);
 	ret = write(fd, bufw, write_cnt);
-	//printx("\nAfter write, ret is ");
+	printx("\nAfter write, ret is ");
 	int_printer(ret);
 	fsync();
 	ret = close(fd);
