@@ -1301,6 +1301,7 @@ static struct inode *get_inode_slot(void)
  */
 static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
 {
+    sys_printx("\nD1");
     struct super_block * super_b = get_super_block();
     int dir_ent_size = super_b->dir_ent_size;
     int block_size = super_b->block_size;
@@ -1326,11 +1327,13 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             sys_printx("add_dir_entry: kmalloc failed\n");
             return -1;
         }
+        sys_printx("\nD1a");
         if (read_through(phys_block, block_buf, block_size) != 0) {
             sys_printx("read_block failed in add_dir_entry\n");
             free_tmp_block(block_buf);
             return -1;
         }
+        sys_printx("\nD1b");
 
         /* 遍历块内的所有目录项 */
         for (int entry_idx = 0; entry_idx < entries_per_block; entry_idx++) {
@@ -1353,6 +1356,7 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                     free_tmp_block(block_buf);
                     return -1;
                 }
+                sys_printx("\nD1c");
                 dir->i_size += DIR_ENTRY_SIZE;
                 if (write_inode_to_disk(dir) != 0) {
                     sys_printx("\nwrite_inode_to_disk failed in add_dir_entry\n");
