@@ -395,7 +395,6 @@ PUBLIC int sys_open(char *pathname, int flags)
         } else {
             sys_printx("\nfile does not exist, create it");
             pin = create_file(pathname, flags);
-            sys_printx("\nO1");
         }
     } else {
         if (inode_nr <= 0) {
@@ -654,19 +653,9 @@ PRIVATE int write_through(int block_nr, void* buf, int bytes) {
         return -1;
     }
 
-    // 构造请求
-    struct hd_request req;
-    req.pid = current->pid;               // 当前进程的 PID
-    req.io_type = DEV_WRITE;          // 写入操作
-    req.block_nr = block_nr;
-    req.bytes = bytes;
-    req.buf = buf;
+    /* 直接同步写入 ROOT_DEV 分区，绕开请求队列，避免异步链路导致的崩溃 */
+    sys_hd_rdwt(DEV_WRITE, MINOR(ROOT_DEV), (u64)block_nr * BLOCK_SIZE, bytes, buf);
 
-    // 插入队列
-    enqueue_hd_request(&req);
-	
-	block(current);
-    
 	return 0;   // 成功
 }
 
@@ -677,18 +666,8 @@ PRIVATE int read_through(int block_nr, void* buf, int bytes) {
         return -1;
     }
 
-    // 构造请求
-    struct hd_request req;
-    req.pid = current->pid;
-    req.io_type = DEV_READ;      // 读操作
-    req.block_nr = block_nr;
-    req.bytes = bytes;
-    req.buf = buf;
-
-    // 插入队列
-    enqueue_hd_request(&req);
-	
-	block(current);
+    /* 直接同步读取 ROOT_DEV 分区，绕开请求队列，避免异步链路导致的崩溃 */
+    sys_hd_rdwt(DEV_READ, MINOR(ROOT_DEV), (u64)block_nr * BLOCK_SIZE, bytes, buf);
     
 	return 0;
 }
@@ -939,7 +918,6 @@ PRIVATE void mkfs()
  *****************************************************************************/
 PRIVATE struct inode *create_file(char *path, int flags)
 {
-    sys_printx("\nC1");
     //sys_printx("\ncreate_file is called\n");
 
     /* 1. Split path into filename and parent directory inode */
@@ -949,7 +927,6 @@ PRIVATE struct inode *create_file(char *path, int flags)
         sys_printx("strip_path failed\n");
         return NULL;
     }
-    sys_printx("\nC2");
 
     //sys_printx("\nfilename is ");
     //sys_printx(filename);
@@ -964,7 +941,6 @@ PRIVATE struct inode *create_file(char *path, int flags)
         sys_printx("alloc_inode failed\n");
         return NULL;
     }
-    sys_printx("\nC3");
 
     /* 3. Allocate data blocks for the file (optional, here we allocate 0 blocks) */
     /*    For a new file, we may not allocate any data blocks until write. */
@@ -977,7 +953,6 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* Free the allocated inode number? */
         return NULL;
     }
-    sys_printx("\nC4");
 
     /* 5. Initialize the inode */
     memset(newino, 0, sizeof(struct inode));
@@ -1000,7 +975,6 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* free the allocated inode number? */
         return NULL;
     }
-    sys_printx("\nC5");
 
     /* 7. Add directory entry in the parent directory */
     if (add_dir_entry(dir_inode, filename, inode_nr) != 0) {
@@ -1008,7 +982,6 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* Remove the inode? */
         return NULL;
     }
-    sys_printx("\nC6");
 
     return newino;
 }
@@ -1130,7 +1103,6 @@ static int alloc_block_for_inode(struct inode *inode, int logical)
 
     /* 直接块 */
     if (logical < INODE_DIRECT_COUNT) {
-            sys_printx("\nW1");
         inode->i_direct[logical] = new_block;
         inode->i_nr_blocks++;
         return new_block;
@@ -1307,7 +1279,6 @@ static struct inode *get_inode_slot(void)
  */
 static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
 {
-    sys_printx("\nD1");
     struct super_block * super_b = get_super_block();
     int dir_ent_size = super_b->dir_ent_size;
     int block_size = super_b->block_size;
@@ -1329,6 +1300,10 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             return -1;
         }
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
+        if (!block_buf) {
+            sys_printx("add_dir_entry: kmalloc failed\n");
+            return -1;
+        }
         if (read_through(phys_block, block_buf, block_size) != 0) {
             sys_printx("read_block failed in add_dir_entry\n");
             free_tmp_block(block_buf);
@@ -1362,7 +1337,6 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                     free_tmp_block(block_buf);
                     return -1;
                 }
-                sys_printx("\nD2");
                 free_tmp_block(block_buf);
                 return 0;
             }
@@ -1396,6 +1370,9 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             dir->i_indirect = indirect_block;
             /* 初始化间接块为零 */
             u8*block_buf2 = (u8*) kmalloc(BLOCK_SIZE);
+            if (!block_buf2) {
+                return -1;
+            }
             memset(block_buf2, 0, block_size);
             if (write_through(indirect_block, block_buf2, block_size) != 0) {
                 free_tmp_block(block_buf2);
@@ -1404,6 +1381,9 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             free_tmp_block(block_buf2);
         }
         u8*block_buf3 = (u8*) kmalloc(BLOCK_SIZE);
+        if (!block_buf3) {
+            return -1;
+        }
         /* 读取间接块 */
         if (read_through(dir->i_indirect, block_buf3, block_size) != 0) {
             free_tmp_block(block_buf3);
@@ -1427,6 +1407,9 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
     dir->i_size += block_size;
 
     u8*block_buf4 = (u8*) kmalloc(BLOCK_SIZE);
+    if (!block_buf4) {
+        return -1;
+    }
     /* 初始化新块的所有目录项为0 */
     memset(block_buf4, 0, block_size);
     if (write_through(new_block, block_buf4, block_size) != 0) {
@@ -1438,6 +1421,9 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
 
     /* 在新块的第一个目录项中写入新条目 */
     u8*block_buf5 = (u8*) kmalloc(BLOCK_SIZE);
+    if (!block_buf5) {
+        return -1;
+    }
     struct dir_entry *new_entry = (struct dir_entry *)block_buf5;
     new_entry->inode_nr = inode_nr;
     strcpy(new_entry->name, name);
@@ -1453,8 +1439,6 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
         sys_printx("write_inode_to_disk failed for directory\n");
         return -1;
     }
-
-    sys_printx("\nD3");
 
     return 0;
 }
