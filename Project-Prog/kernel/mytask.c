@@ -17,8 +17,9 @@ void main() {
 	mkdir("/a/ac/ccc");
 
 	int fd = 0;
+	printx("\nBefore open");
 	fd = open("/a/ab/abc", O_CREAT | O_RDWR);
-	//printx("\nAfter open, the fd is ");
+	printx("\nAfter open, the fd is ");
 	int_printer(fd);
 
 	int ret = 0;
