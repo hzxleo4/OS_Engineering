@@ -584,37 +584,26 @@ PUBLIC int dequeue_hd_request(struct hd_request* req) {
  */
 static int find_partition(int block_nr, int* dev_out, u64* pos_out) {
     int drive = 0;  /* 当前只支持一个硬盘 */
+    int dev = MINOR(ROOT_DEV);
     struct hd_info* hdi = &hd_info[drive];
-    int i;
-    u64 base_byte, size_byte;
-	u64 relative_pos = block_nr * BLOCK_SIZE;
-	u64 end_pos = 0;
-	u64 start_pos = 0;
-	/* 先检查主分区 */
-	base_byte = (u64)hdi->primary[1].base * SECTOR_SIZE;
-	size_byte = (u64)hdi->primary[1].size * SECTOR_SIZE;
-	start_pos = 0;
-	end_pos += size_byte;
-	if (relative_pos < end_pos) {
-		*dev_out = 1; 
-		*pos_out = relative_pos;
-		return 0;
-	} else {
-    	/* 再检查逻辑分区（0 ~ NR_SUB_PER_DRIVE-1） */
-    	for (i = 0; i < NR_SUB_PER_DRIVE; i++) {
-        	base_byte = (u64)hdi->logical[i].base * SECTOR_SIZE;
-        	size_byte = (u64)hdi->logical[i].size * SECTOR_SIZE;
-        	if (size_byte == 0) continue;
-			start_pos = end_pos;
-			end_pos += size_byte;
-        	if (relative_pos < end_pos) {
-            	*dev_out = MINOR_hd1a + i;  /* 逻辑分区设备号 */
-            	*pos_out = relative_pos - start_pos;
-            	return 0;
-        	}
-    	}
-	}
-    return -1;  /* 未找到 */
+    u64 relative_pos = (u64)block_nr * BLOCK_SIZE;
+    u64 part_size;
+
+    if (dev < MAX_PRIM) {
+        part_size = (u64)hdi->primary[dev].size * SECTOR_SIZE;
+    } else {
+        int logidx = (dev - MINOR_hd1a) % NR_SUB_PER_DRIVE;
+        part_size = (u64)hdi->logical[logidx].size * SECTOR_SIZE;
+    }
+
+    /* 请求必须落在 ROOT_DEV 分区内。 */
+    if (part_size == 0 || relative_pos + BLOCK_SIZE > part_size) {
+        return -1;
+    }
+
+    *dev_out = dev;
+    *pos_out = relative_pos;
+    return 0;
 }
 
 

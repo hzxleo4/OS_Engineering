@@ -395,6 +395,7 @@ PUBLIC int sys_open(char *pathname, int flags)
         } else {
             sys_printx("\nfile does not exist, create it");
             pin = create_file(pathname, flags);
+            sys_printx("\nO1");
         }
     } else {
         if (inode_nr <= 0) {
@@ -938,6 +939,7 @@ PRIVATE void mkfs()
  *****************************************************************************/
 PRIVATE struct inode *create_file(char *path, int flags)
 {
+    sys_printx("\nC1");
     //sys_printx("\ncreate_file is called\n");
 
     /* 1. Split path into filename and parent directory inode */
@@ -947,6 +949,7 @@ PRIVATE struct inode *create_file(char *path, int flags)
         sys_printx("strip_path failed\n");
         return NULL;
     }
+    sys_printx("\nC2");
 
     //sys_printx("\nfilename is ");
     //sys_printx(filename);
@@ -961,6 +964,7 @@ PRIVATE struct inode *create_file(char *path, int flags)
         sys_printx("alloc_inode failed\n");
         return NULL;
     }
+    sys_printx("\nC3");
 
     /* 3. Allocate data blocks for the file (optional, here we allocate 0 blocks) */
     /*    For a new file, we may not allocate any data blocks until write. */
@@ -973,6 +977,7 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* Free the allocated inode number? */
         return NULL;
     }
+    sys_printx("\nC4");
 
     /* 5. Initialize the inode */
     memset(newino, 0, sizeof(struct inode));
@@ -995,6 +1000,7 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* free the allocated inode number? */
         return NULL;
     }
+    sys_printx("\nC5");
 
     /* 7. Add directory entry in the parent directory */
     if (add_dir_entry(dir_inode, filename, inode_nr) != 0) {
@@ -1002,6 +1008,7 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* Remove the inode? */
         return NULL;
     }
+    sys_printx("\nC6");
 
     return newino;
 }
@@ -1123,6 +1130,7 @@ static int alloc_block_for_inode(struct inode *inode, int logical)
 
     /* 直接块 */
     if (logical < INODE_DIRECT_COUNT) {
+            sys_printx("\nW1");
         inode->i_direct[logical] = new_block;
         inode->i_nr_blocks++;
         return new_block;
@@ -1299,6 +1307,7 @@ static struct inode *get_inode_slot(void)
  */
 static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
 {
+    sys_printx("\nD1");
     struct super_block * super_b = get_super_block();
     int dir_ent_size = super_b->dir_ent_size;
     int block_size = super_b->block_size;
@@ -1353,6 +1362,7 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                     free_tmp_block(block_buf);
                     return -1;
                 }
+                sys_printx("\nD2");
                 free_tmp_block(block_buf);
                 return 0;
             }
@@ -1443,6 +1453,8 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
         sys_printx("write_inode_to_disk failed for directory\n");
         return -1;
     }
+
+    sys_printx("\nD3");
 
     return 0;
 }
