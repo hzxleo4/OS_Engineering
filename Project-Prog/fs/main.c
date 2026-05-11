@@ -633,6 +633,9 @@ PRIVATE int read_block(int block_nr, void* buf, int bytes) {
     // 我们使用一个临时缓冲区接收数据，因为 buf 可能是用户空间地址
     if (bytes > BLOCK_SIZE) return -1;
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
+    if (!block_buf) {
+        return -1;
+    }
 	if (read_through(block_nr, block_buf, bytes) != 0) {
 		free_tmp_block(block_buf);
 		return -1;
@@ -1263,6 +1266,10 @@ static int write_inode_to_disk(struct inode *inode)
 
     /* 先读取整个块，因为可能只修改部分数据 */
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
+    if (!block_buf) {
+        sys_printx("write_inode_to_disk: kmalloc failed\n");
+        return -1;
+    }
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
         free_tmp_block(block_buf);
@@ -1573,6 +1580,9 @@ static struct inode *read_inode(int inode_nr, u32 inode_region_start, u32 inode_
     int block_nr = inode_region_start + (block_offset >> BLOCK_SIZE_SHIFT);
     int offset = block_offset % BLOCK_SIZE;
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
+    if (!block_buf) {
+        return NULL;
+    }
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
         free_tmp_block(block_buf);
