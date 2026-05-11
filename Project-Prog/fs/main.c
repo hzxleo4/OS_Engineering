@@ -63,6 +63,17 @@ char *strrchr(const char *s, int c);
 PUBLIC void dump_dir_recursive(int inode_nr, int depth, int max_depth);
 PUBLIC void dump_fs(void);
 
+/* page.c */
+void free(u32 page);
+
+/* kmalloc(BLOCK_SIZE) 返回的是内核虚拟地址，需要转回物理页地址释放 */
+static void free_tmp_block(void *p)
+{
+    if (p) {
+        free((u32)p - PAGE_OFFSET);
+    }
+}
+
 
 /* Please complete the missing code in sys_mkdir() and sys_rdwt()*/
 
@@ -157,8 +168,10 @@ PUBLIC int sys_mkdir(char *pathname)
     de[1].inode_nr = parent_dir->i_num;
     strcpy(de[1].name, "..");
     if (write_through(block_nr, block_buf, super_b->block_size) != 0) {
+        free_tmp_block(block_buf);
         return -1;
     }
+    free_tmp_block(block_buf);
    
 
     /* 9. Add the directory entry in the parent directory */
@@ -213,6 +226,7 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
     /*   If more space is needed, new blocks are allocated dynamically.                    */
     if (io_type == READ) {
         if (pos >= inode->i_size) {
+            free_tmp_block(block_buf);
             return 0;
         }
         bytes_target = min(count, inode->i_size - pos);
@@ -280,6 +294,7 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
         }
         if (bytes_done > 0) {
             if (write_inode_to_disk(inode) != 0) {
+                free_tmp_block(block_buf);
                 return -1;
             }
         }
@@ -287,6 +302,7 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
 
    
     /*6. Returns: The number of bytes successfully read or written.                     */
+    free_tmp_block(block_buf);
     return bytes_done;
 }
 
@@ -618,6 +634,7 @@ PRIVATE int read_block(int block_nr, void* buf, int bytes) {
     if (bytes > BLOCK_SIZE) return -1;
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
 	if (read_through(block_nr, block_buf, bytes) != 0) {
+		free_tmp_block(block_buf);
 		return -1;
 	}
 
@@ -625,6 +642,7 @@ PRIVATE int read_block(int block_nr, void* buf, int bytes) {
     memcpy(buf, block_buf, bytes);
     // 将数据加入缓存（干净块）
     cache_add(block_nr, (u8*)block_buf, 0);
+	free_tmp_block(block_buf);
     return 0;
 }
 
@@ -1005,6 +1023,7 @@ int alloc_inode(void)
         int block_nr = bitmap_start + block_idx;
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0) {
+            free_tmp_block(block_buf);
             return -1;
         }
 
@@ -1028,12 +1047,15 @@ int alloc_inode(void)
                     /* 设置该位为1 */
                     block_buf[byte] |= (1 << bit);
                     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0) {
+                        free_tmp_block(block_buf);
                         return -1;
                     }
+                    free_tmp_block(block_buf);
                     return inode_nr;
                 }
             }
         }
+        free_tmp_block(block_buf);
     }
 
     /* 没有空闲inode */
@@ -1074,12 +1096,17 @@ int alloc_block(void)
                     /* 设置位图 */
                     block_buf[byte] |= (1 << bit);
                     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
+                    {
+                        free_tmp_block(block_buf);
                         return -1;
+                    }
 
+                    free_tmp_block(block_buf);
                     return alloc_block_nr;
                 }
             }
         }
+        free_tmp_block(block_buf);
     }
     return -1;  /* 无空闲块 */
 }
@@ -1122,22 +1149,28 @@ static int alloc_block_for_inode(struct inode *inode, int logical)
         if (!zero_buf) return -1;
         memset(zero_buf, 0, block_size);
         if (write_through(indirect_block, zero_buf, block_size) != 0) {
+            free_tmp_block(zero_buf);
             return -1;
         }
+        free_tmp_block(zero_buf);
     }
 
     /* 读取间接块 */
     u32 *indirect = (u32*)kmalloc(block_size);
     if (!indirect) return -1;
     if (read_through(inode->i_indirect, indirect, block_size) != 0) {
+        free_tmp_block(indirect);
         return -1;
     }
 
     /* 设置对应指针 */
     indirect[indirect_index] = new_block;
     if (write_through(inode->i_indirect, indirect, block_size) != 0) {
+        free_tmp_block(indirect);
         return -1;
     }
+
+    free_tmp_block(indirect);
 
     inode->i_nr_blocks++;
     return new_block;
@@ -1229,10 +1262,17 @@ static int write_inode_to_disk(struct inode *inode)
     /* 先读取整个块，因为可能只修改部分数据 */
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
+    {
+        free_tmp_block(block_buf);
         return -1;
+    }
     memcpy(block_buf + offset, inode, super_b->inode_size);
     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
+    {
+        free_tmp_block(block_buf);
         return -1;
+    }
+    free_tmp_block(block_buf);
     return 0;
 }
 
@@ -1282,6 +1322,7 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(phys_block, block_buf, block_size) != 0) {
             sys_printx("read_block failed in add_dir_entry\n");
+            free_tmp_block(block_buf);
             return -1;
         }
 
@@ -1303,16 +1344,20 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                 //sys_write_int_routine(entry->inode_nr);
                 if (write_through(phys_block, block_buf, block_size) != 0) {
                     sys_printx("write_through failed in add_dir_entry\n");
+                    free_tmp_block(block_buf);
                     return -1;
                 }
                 dir->i_size += DIR_ENTRY_SIZE;
                 if (write_inode_to_disk(dir) != 0) {
                     sys_printx("\nwrite_inode_to_disk failed in add_dir_entry\n");
+                    free_tmp_block(block_buf);
                     return -1;
                 }
+                free_tmp_block(block_buf);
                 return 0;
             }
         }
+        free_tmp_block(block_buf);
     }
 
     /* 没有空闲项，需要扩展目录，分配新块 */
@@ -1343,20 +1388,25 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             u8*block_buf2 = (u8*) kmalloc(BLOCK_SIZE);
             memset(block_buf2, 0, block_size);
             if (write_through(indirect_block, block_buf2, block_size) != 0) {
+                free_tmp_block(block_buf2);
                 return -1;
             }
+            free_tmp_block(block_buf2);
         }
         u8*block_buf3 = (u8*) kmalloc(BLOCK_SIZE);
         /* 读取间接块 */
         if (read_through(dir->i_indirect, block_buf3, block_size) != 0) {
+            free_tmp_block(block_buf3);
             return -1;
         }
         u32 *indirect = (u32 *)block_buf3;
         int index_in_indirect = new_block_idx - INODE_DIRECT_COUNT;
         indirect[index_in_indirect] = new_block;
         if (write_through(dir->i_indirect, block_buf3, block_size) != 0) {
+            free_tmp_block(block_buf3);
             return -1;
         }
+        free_tmp_block(block_buf3);
     } else {
         /* 不支持二级间接块 */
         sys_printx("directory too large, indirect block not supported\n");
@@ -1371,8 +1421,10 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
     memset(block_buf4, 0, block_size);
     if (write_through(new_block, block_buf4, block_size) != 0) {
         /* 回滚 inode 更改？简化处理，返回失败 */
+        free_tmp_block(block_buf4);
         return -1;
     }
+    free_tmp_block(block_buf4);
 
     /* 在新块的第一个目录项中写入新条目 */
     u8*block_buf5 = (u8*) kmalloc(BLOCK_SIZE);
@@ -1381,8 +1433,10 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
     strcpy(new_entry->name, name);
     new_entry->name[MAX_FILENAME_LEN - 1] = '\0';
     if (write_through(new_block, block_buf5, block_size) != 0) {
+        free_tmp_block(block_buf5);
         return -1;
     }
+    free_tmp_block(block_buf5);
 
     /* 更新目录 inode 到磁盘 */
     if (write_inode_to_disk(dir) != 0) {
@@ -1498,12 +1552,17 @@ static struct inode *read_inode(int inode_nr, u32 inode_region_start, u32 inode_
     int offset = block_offset % BLOCK_SIZE;
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
+    {
+        free_tmp_block(block_buf);
         return NULL;
+    }
 
     struct inode *new_inode = &inode_table[free_slot];
     memcpy(new_inode, block_buf + offset, inode_size);
     new_inode->i_num = inode_nr;
     new_inode->i_cnt = 1;                           /* 初始引用计数为 1 */
+
+    free_tmp_block(block_buf);
 
     return new_inode;
 }
@@ -1531,10 +1590,13 @@ static int get_block_nr(struct inode *inode, int block_index) {
         if (inode->i_indirect == 0) return -1;   /* 间接块未分配 */
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(inode->i_indirect, block_buf, BLOCK_SIZE) != 0) {
+            free_tmp_block(block_buf);
             return -1;
         }
         u32 *ptr = (u32 *)block_buf;
-        return ptr[indirect_index];
+        int ret = ptr[indirect_index];
+        free_tmp_block(block_buf);
+        return ret;
     }
 
     /* 暂不支持二级间接块 */
@@ -1560,6 +1622,7 @@ static int find_in_dir(struct inode *dir_inode, char *name,
         if (block_nr < 0) return -1;
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0) {
+            free_tmp_block(block_buf);
             return -1;
         }
 
@@ -1572,9 +1635,12 @@ static int find_in_dir(struct inode *dir_inode, char *name,
             //sys_printx("\nentry->name is");
             //sys_printx(entry->name);
             if (strcmp(entry->name, name) == 0) {
-                return entry->inode_nr;
+                int ret = entry->inode_nr;
+                free_tmp_block(block_buf);
+                return ret;
             }
         }
+        free_tmp_block(block_buf);
     }
     return -1;
 }

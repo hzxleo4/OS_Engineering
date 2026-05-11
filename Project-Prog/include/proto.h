@@ -92,3 +92,4 @@ PUBLIC char * strcat(char * s1, const char *s2);
 
 /*pagc.c*/
 PUBLIC u32 kmalloc(int size);
+PUBLIC void free(u32 page);

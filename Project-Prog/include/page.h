@@ -43,5 +43,6 @@ extern pte_t pg_tasks[4096];
 //void set_page_directory(pte_t *pg_dir, void* user_entry_value, void* kernel_entry_value);
 void set_task_paging(int pid);
 void sys_print_task_paging(int pid);
+void free(u32 page);
 
 #endif
