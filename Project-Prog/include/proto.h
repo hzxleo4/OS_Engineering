@@ -61,7 +61,7 @@ PUBLIC void	sys_hd_close(int device);
 PUBLIC void sys_hd_ioctl(int dev, int request, void* buf);
 PUBLIC void sys_hd_routine();
 PUBLIC int dequeue_hd_request(struct hd_request* req);
-PUBLIC void enqueue_hd_request(struct hd_request* req);
+PUBLIC int enqueue_hd_request(struct hd_request* req);
 
 /* tty.c */
 PUBLIC int sys_printx(char* s);

@@ -36,7 +36,7 @@ PRIVATE void	partition		(int device, int style);
 PRIVATE void	print_hdinfo		(struct hd_info * hdi);
 
 /* 队列操作函数（供其他模块调用，此处仅声明） */
-void enqueue_hd_request(struct hd_request* req);
+int enqueue_hd_request(struct hd_request* req);
 int dequeue_hd_request(struct hd_request* req);
 
 
@@ -555,15 +555,16 @@ PUBLIC void hd_handler()
 }
 
 // for block devices
-PUBLIC void enqueue_hd_request(struct hd_request* req) {
+PUBLIC int enqueue_hd_request(struct hd_request* req) {
     int next = (queue_tail + 1) % REQ_QUEUE_SIZE;
     if (next == queue_head) {
         /* 队列满，处理错误（例如丢弃请求或阻塞） */
 		sys_printx("ERROR: queue is full");
-        return;
+		return -1;
     }
     request_queue[queue_tail] = *req;
     queue_tail = next;
+	return 0;
 }
 
 PUBLIC int dequeue_hd_request(struct hd_request* req) {

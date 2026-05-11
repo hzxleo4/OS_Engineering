@@ -653,8 +653,19 @@ PRIVATE int write_through(int block_nr, void* buf, int bytes) {
         return -1;
     }
 
-    /* 直接同步写入 ROOT_DEV 分区，绕开请求队列，避免异步链路导致的崩溃 */
-    sys_hd_rdwt(DEV_WRITE, MINOR(ROOT_DEV), (u64)block_nr * BLOCK_SIZE, bytes, buf);
+    /* 构造请求并交给 TASK_HD 处理，硬盘中断只会通知 TASK_HD。 */
+    struct hd_request req;
+    req.pid = current->pid;
+    req.io_type = DEV_WRITE;
+    req.block_nr = block_nr;
+    req.bytes = bytes;
+    req.buf = buf;
+
+    if (enqueue_hd_request(&req) != 0) {
+        return -1;
+    }
+
+    block(current);
 
 	return 0;   // 成功
 }
@@ -666,8 +677,19 @@ PRIVATE int read_through(int block_nr, void* buf, int bytes) {
         return -1;
     }
 
-    /* 直接同步读取 ROOT_DEV 分区，绕开请求队列，避免异步链路导致的崩溃 */
-    sys_hd_rdwt(DEV_READ, MINOR(ROOT_DEV), (u64)block_nr * BLOCK_SIZE, bytes, buf);
+    /* 构造请求并交给 TASK_HD 处理，硬盘中断只会通知 TASK_HD。 */
+    struct hd_request req;
+    req.pid = current->pid;
+    req.io_type = DEV_READ;
+    req.block_nr = block_nr;
+    req.bytes = bytes;
+    req.buf = buf;
+
+    if (enqueue_hd_request(&req) != 0) {
+        return -1;
+    }
+
+    block(current);
     
 	return 0;
 }
