@@ -419,7 +419,8 @@ PUBLIC int sys_open(char *pathname, int flags)
     } else {
         return -1;
     }
-
+    sys_printx("\nopen file successfully, the fd is ");
+    sys_write_int_routine(fd);
     return fd;
 }
 
