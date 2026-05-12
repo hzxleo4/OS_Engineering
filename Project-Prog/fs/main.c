@@ -1446,6 +1446,7 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
     if (!block_buf5) {
         return -1;
     }
+    memset(block_buf5, 0, block_size);
     struct dir_entry *new_entry = (struct dir_entry *)block_buf5;
     new_entry->inode_nr = inode_nr;
     strcpy(new_entry->name, name);
@@ -1478,6 +1479,7 @@ PRIVATE void read_super_block()
 	u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
     int ret = read_through(SUPER_BLOCK_NR, block_buf, BLOCK_SIZE);
 	memcpy(sb, block_buf, SUPER_BLOCK_SIZE);
+	free_tmp_block(block_buf);
 }
 
 /*****************************************************************************

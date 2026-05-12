@@ -619,25 +619,26 @@ PUBLIC void sys_hd_routine() {
 		hd_opened = 1;
 	}
 
-	/* 1. 从队列取一个请求，没有请求则直接返回 */
-	if (dequeue_hd_request(&req) != 0) {
-		return;
-	}
+	/* 1. 尽量处理完当前积压的请求，避免 FS 任务长时间卡在 block()。 */
+	while (dequeue_hd_request(&req) == 0) {
+		dev = 0;
+		pos = 0;
 
-	/* 2. 根据绝对块号找到分区设备与分区内偏移 */
-	if (find_partition(req.block_nr, &dev, &pos) != 0) {
-		sys_printx("ERROR!");
+		/* 2. 根据绝对块号找到分区设备与分区内偏移 */
+		if (find_partition(req.block_nr, &dev, &pos) != 0) {
+			sys_printx("ERROR!");
+			if (req.pid >= 0 && req.pid < NR_TASKS) {
+				unblock(&tasks[req.pid]);
+			}
+			continue;
+		}
+
+		/* 3. 执行读写 */
+		sys_hd_rdwt(req.io_type, dev, pos, req.bytes, req.buf);
+
+		/* 4. 唤醒等待该 I/O 的进程 */
 		if (req.pid >= 0 && req.pid < NR_TASKS) {
 			unblock(&tasks[req.pid]);
 		}
-		return;
-	}
-
-	/* 3. 执行读写 */
-	sys_hd_rdwt(req.io_type, dev, pos, req.bytes, req.buf);
-
-	/* 4. 唤醒等待该 I/O 的进程 */
-	if (req.pid >= 0 && req.pid < NR_TASKS) {
-		unblock(&tasks[req.pid]);
 	}
 }

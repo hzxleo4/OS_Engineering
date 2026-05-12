@@ -39,7 +39,10 @@ void main() {
 	char bufr[6];
 	ret = 0;
 	ret = read(fd, bufr, read_cnt);
-	
+	if (ret >= 0 && ret < sizeof(bufr)) {
+		bufr[ret] = '\0';
+	}
+
 	printx(bufr);
 	
 	ret = 0;
