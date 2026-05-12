@@ -66,6 +66,9 @@ PUBLIC void dump_fs(void);
 /* page.c */
 void free(u32 page);
 
+/* 缓存池必须是连续内存；当前 kmalloc 不保证多页连续，不能用于该场景。 */
+static struct cache_block cache_pool[CACHE_BLOCKS];
+
 /* kmalloc(BLOCK_SIZE) 返回的是内核虚拟地址，需要转回物理页地址释放 */
 static void free_tmp_block(void *p)
 {
@@ -700,9 +703,8 @@ PRIVATE int read_through(int block_nr, void* buf, int bytes) {
 /* 初始化缓存（在 mkfs 中调用） */
 void cache_init(void) {
     if (cache_initialized) return;
-    /* 分配 1MB 内存作为缓存块的数据区 */
-    u32 base = kmalloc(CACHE_BLOCKS * sizeof(struct cache_block));
-    cache = (struct cache_block*)base;
+    /* 使用静态连续缓存池，避免 kmalloc 多页不连续导致的内存破坏 */
+    cache = cache_pool;
    
     memset(cache, 0, CACHE_BLOCKS * sizeof(struct cache_block));
     for (int i = 0; i < CACHE_BLOCKS; i++) {
@@ -1254,7 +1256,6 @@ static int free_inode(int inode_nr) {
  */
 static int write_inode_to_disk(struct inode *inode)
 {
-    sys_printx("\nI1");
     /* 计算 inode 区域起始块号和偏移，然后写入 */
     struct super_block * super_b = get_super_block();
     u32 inode_region_start = super_b->first_data_block - super_b->nr_inode_blocks;
@@ -1271,13 +1272,11 @@ static int write_inode_to_disk(struct inode *inode)
     {
         return -1;
     }
-    sys_printx("\nI2");
     memcpy(block_buf + offset, inode, super_b->inode_size);
     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
         return -1;
     }
-    sys_printx("\nI3");
     return 0;
 }
 
@@ -1304,7 +1303,6 @@ static struct inode *get_inode_slot(void)
  */
 static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
 {
-    sys_printx("\nD1");
     struct super_block * super_b = get_super_block();
     int dir_ent_size = super_b->dir_ent_size;
     int block_size = super_b->block_size;
@@ -1330,13 +1328,11 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             sys_printx("add_dir_entry: kmalloc failed\n");
             return -1;
         }
-        sys_printx("\nD1a");
         if (read_through(phys_block, block_buf, block_size) != 0) {
             sys_printx("read_block failed in add_dir_entry\n");
             free_tmp_block(block_buf);
             return -1;
         }
-        sys_printx("\nD1b");
 
         /* 遍历块内的所有目录项 */
         for (int entry_idx = 0; entry_idx < entries_per_block; entry_idx++) {
@@ -1359,15 +1355,12 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                     free_tmp_block(block_buf);
                     return -1;
                 }
-                sys_printx("\nD1c");
                 dir->i_size += DIR_ENTRY_SIZE;
-                sys_printx("\nD1d");
                 if (write_inode_to_disk(dir) != 0) {
                     sys_printx("\nwrite_inode_to_disk failed in add_dir_entry\n");
                     free_tmp_block(block_buf);
                     return -1;
                 }
-                sys_printx("\nD1e");
                 free_tmp_block(block_buf);
                 return 0;
             }
