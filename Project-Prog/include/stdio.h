@@ -92,7 +92,8 @@ __asm__ ("int $0x80" \
 int __result;\
 __asm__ volatile ("int $0x80" \
 	: "=a" (__result)\
-	: "a"(_NR_open), "b"(pathname), "c"(flags));\
+	: "a"(_NR_open), "b"(pathname), "c"(flags)\
+	: "memory", "cc");\
 __result; \
 })
 
@@ -101,7 +102,8 @@ __result; \
 int __result;\
 __asm__ volatile ("int $0x80" \
 	: "=a" (__result)\
-	: "a"(_NR_close), "b"(fd));\
+	: "a"(_NR_close), "b"(fd)\
+	: "memory", "cc");\
 __result; \
 })
 
@@ -110,7 +112,8 @@ __result; \
 int __result;\
 __asm__ volatile ("int $0x80" \
 	: "=a" (__result)\
-	: "a"(_NR_read), "b"(fd), "c"(buf), "d"(count));\
+	: "a"(_NR_read), "b"(fd), "c"(buf), "d"(count)\
+	: "memory", "cc");\
 __result; \
 })
 
@@ -119,7 +122,8 @@ __result; \
 int __result;\
 __asm__ volatile ("int $0x80" \
 	: "=a" (__result)\
-	: "a"(_NR_write), "b"(fd), "c"(buf), "d"(count));\
+	: "a"(_NR_write), "b"(fd), "c"(buf), "d"(count)\
+	: "memory", "cc");\
 __result; \
 })
 
@@ -128,7 +132,8 @@ __result; \
 int __result;\
 __asm__ volatile ("int $0x80" \
 	: "=a" (__result)\
-	: "a"(_NR_delete), "b"(pathname));\
+	: "a"(_NR_delete), "b"(pathname)\
+	: "memory", "cc");\
 __result; \
 })
 
@@ -147,7 +152,8 @@ __asm__ ("int $0x80" \
 int __result;\
 __asm__ volatile ("int $0x80" \
 	: "=a" (__result)\
-	: "a"(_NR_mkdir), "b"(pathname));\
+	: "a"(_NR_mkdir), "b"(pathname)\
+	: "memory", "cc");\
 __result; \
 })
 

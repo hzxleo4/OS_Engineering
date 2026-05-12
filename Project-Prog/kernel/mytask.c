@@ -37,9 +37,16 @@ void main() {
 
 	int read_cnt = 3;
 	char bufr[6];
+	for (int i = 0; i < 6; i++) bufr[i] = 0;
 	ret = 0;
 	ret = read(fd, bufr, read_cnt);
-	
+	if (ret > 0 && ret < 6) {
+		bufr[ret] = '\0';
+	} else {
+		bufr[5] = '\0';
+	}
+
+	printx("\nAfter read, buf is ");
 	printx(bufr);
 	
 	ret = 0;
