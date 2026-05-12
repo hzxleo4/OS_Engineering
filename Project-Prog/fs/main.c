@@ -1264,24 +1264,17 @@ static int write_inode_to_disk(struct inode *inode)
     //sys_printx("\noffset is");
     //sys_write_int_routine(offset);
 
-    /* 先读取整个块，因为可能只修改部分数据 */
-    u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
-    if (!block_buf) {
-        sys_printx("write_inode_to_disk: kmalloc failed\n");
-        return -1;
-    }
+    /* 使用静态缓冲避免频繁分配页导致的不稳定 */
+    u8 *block_buf = fsbuf;
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
-        free_tmp_block(block_buf);
         return -1;
     }
     memcpy(block_buf + offset, inode, super_b->inode_size);
     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
-        free_tmp_block(block_buf);
         return -1;
     }
-    free_tmp_block(block_buf);
     return 0;
 }
 
@@ -1579,13 +1572,9 @@ static struct inode *read_inode(int inode_nr, u32 inode_region_start, u32 inode_
     int block_offset = idx * inode_size;            /* 在 inode 区域内的字节偏移 */
     int block_nr = inode_region_start + (block_offset >> BLOCK_SIZE_SHIFT);
     int offset = block_offset % BLOCK_SIZE;
-    u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
-    if (!block_buf) {
-        return NULL;
-    }
+    u8 *block_buf = fsbuf2;
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
-        free_tmp_block(block_buf);
         return NULL;
     }
 
@@ -1593,8 +1582,6 @@ static struct inode *read_inode(int inode_nr, u32 inode_region_start, u32 inode_
     memcpy(new_inode, block_buf + offset, inode_size);
     new_inode->i_num = inode_nr;
     new_inode->i_cnt = 1;                           /* 初始引用计数为 1 */
-
-    free_tmp_block(block_buf);
 
     return new_inode;
 }
