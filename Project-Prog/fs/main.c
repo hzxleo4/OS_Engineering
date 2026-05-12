@@ -957,14 +957,14 @@ PRIVATE struct inode *create_file(char *path, int flags)
         return NULL;
     }
 
-    //sys_printx("\nfilename is ");
-    //sys_printx(filename);
-    //sys_printx("\ndir_inode size is ");
+    sys_printx("\nfilename is ");
+    sys_printx(filename);
+    sys_printx("\ndir_inode size is ");
     //sys_write_int_routine(dir_inode->i_size);
 
     /* 2. Allocate a new inode number from the inode bitmap */
     int inode_nr = alloc_inode();
-    //sys_printx("\ninode_nr is ");
+    sys_printx("\ninode_nr is ");
     //sys_write_int_routine(inode_nr);
     if (inode_nr < 0) {
         sys_printx("alloc_inode failed\n");
@@ -1011,7 +1011,7 @@ PRIVATE struct inode *create_file(char *path, int flags)
         /* Remove the inode? */
         return NULL;
     }
-
+    sys_printx("\nfile created successfully\n");
     return newino;
 }
 
