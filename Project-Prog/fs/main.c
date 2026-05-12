@@ -66,9 +66,6 @@ PUBLIC void dump_fs(void);
 /* page.c */
 void free(u32 page);
 
-/* 缓存池必须是连续内存；当前 kmalloc 不保证多页连续，不能用于该场景。 */
-static struct cache_block cache_pool[CACHE_BLOCKS];
-
 /* kmalloc(BLOCK_SIZE) 返回的是内核虚拟地址，需要转回物理页地址释放 */
 static void free_tmp_block(void *p)
 {
@@ -703,8 +700,13 @@ PRIVATE int read_through(int block_nr, void* buf, int bytes) {
 /* 初始化缓存（在 mkfs 中调用） */
 void cache_init(void) {
     if (cache_initialized) return;
-    /* 使用静态连续缓存池，避免 kmalloc 多页不连续导致的内存破坏 */
-    cache = cache_pool;
+    /* 分配缓存块数据区（依赖 kmalloc 连续分配） */
+    u32 base = kmalloc(CACHE_BLOCKS * sizeof(struct cache_block));
+    if (!base) {
+        sys_printx("cache_init: kmalloc failed\n");
+        return;
+    }
+    cache = (struct cache_block*)base;
    
     memset(cache, 0, CACHE_BLOCKS * sizeof(struct cache_block));
     for (int i = 0; i < CACHE_BLOCKS; i++) {

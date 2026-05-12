@@ -47,26 +47,31 @@ u32 alloc_phys_pages(u32 size) {
     if (size == 0) return 0;
 
     u32 num_pages = (size + PAGE_SIZE - 1) >> 12;  // 除以PAGE_SIZE,向上取整
-    u32 first_page = 0;
-    u32 allocated = 0;
+	if (num_pages > TOTAL_PAGES) return 0;
 
-    for (u32 i = 0; i < num_pages; i++) {
-        u32 page = alloc_phys_page();
-        if (page == 0) {
-            // 分配失败，释放已分配的页
-            for (u32 j = 0; j < allocated; j++) {
-                u32 addr = first_page + j * PAGE_SIZE;
-                u32 index = (addr - PHYS_PAGE_START) >> 12;
-                clear_bit(index);       // 假设存在清除位图的函数
-            }
-            return 0;
-        }
-        if (i == 0) {
-            first_page = page;          // 记录第一页地址
-        } 
-        allocated++;
+	/* 查找一段连续空闲页 */
+	for (u32 start = 0; start + num_pages <= TOTAL_PAGES; start++) {
+		int ok = 1;
+		for (u32 i = 0; i < num_pages; i++) {
+			if (test_bit(start + i)) {
+				ok = 0;
+				start += i; /* 小优化：直接跳过已占用页 */
+				break;
+			}
+		}
+		if (!ok) continue;
+
+		/* 标记并清零 */
+		for (u32 i = 0; i < num_pages; i++) {
+			set_bit(start + i);
+			u32 page = PHYS_PAGE_START + (start + i) * PAGE_SIZE;
+			memset((void*)(page + PAGE_OFFSET), 0, PAGE_SIZE);
+		}
+
+		return PHYS_PAGE_START + start * PAGE_SIZE;
     }
-    return first_page;
+
+	return 0;
 }
 
 /**
