@@ -1254,6 +1254,7 @@ static int free_inode(int inode_nr) {
  */
 static int write_inode_to_disk(struct inode *inode)
 {
+    sys_printx("\nI1");
     /* 计算 inode 区域起始块号和偏移，然后写入 */
     struct super_block * super_b = get_super_block();
     u32 inode_region_start = super_b->first_data_block - super_b->nr_inode_blocks;
@@ -1270,11 +1271,13 @@ static int write_inode_to_disk(struct inode *inode)
     {
         return -1;
     }
+    sys_printx("\nI2");
     memcpy(block_buf + offset, inode, super_b->inode_size);
     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
     {
         return -1;
     }
+    sys_printx("\nI3");
     return 0;
 }
 
@@ -1358,11 +1361,13 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                 }
                 sys_printx("\nD1c");
                 dir->i_size += DIR_ENTRY_SIZE;
+                sys_printx("\nD1d");
                 if (write_inode_to_disk(dir) != 0) {
                     sys_printx("\nwrite_inode_to_disk failed in add_dir_entry\n");
                     free_tmp_block(block_buf);
                     return -1;
                 }
+                sys_printx("\nD1e");
                 free_tmp_block(block_buf);
                 return 0;
             }
