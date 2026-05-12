@@ -187,7 +187,9 @@ PUBLIC void block(TASK* p)
 	//sys_printx("\nTASK wait:");
 	//sys_write_int_routine(p->pid);
 	p->p_flags |= WAITING;
-	schedule_new();
+	while (p->p_flags != READY) {
+		schedule_new();
+	}
 }
 
 /*****************************************************************************

@@ -63,17 +63,6 @@ char *strrchr(const char *s, int c);
 PUBLIC void dump_dir_recursive(int inode_nr, int depth, int max_depth);
 PUBLIC void dump_fs(void);
 
-/* page.c */
-void free(u32 page);
-
-/* kmalloc(BLOCK_SIZE) 返回的是内核虚拟地址，需要转回物理页地址释放 */
-static void free_tmp_block(void *p)
-{
-    if (p) {
-        free((u32)p - PAGE_OFFSET);
-    }
-}
-
 
 /* Please complete the missing code in sys_mkdir() and sys_rdwt()*/
 
@@ -93,92 +82,101 @@ PUBLIC int sys_mkdir(char *pathname)
     u8 *block_buf;
 
     /* 1. Check if the path is valid and the directory does not already exist */
-    if (!pathname || pathname[0] == '\0') {
+    int existing_inode = search_file(pathname);
+    if (existing_inode == -1) {
+        sys_printx("\nmkdir: invalid path");
         return -1;
     }
-    if (search_file(pathname) > 0) {
+    if (existing_inode > 0) {
+        sys_printx("\nmkdir: directory already exists");
         return -1;
     }
    
     /* 2. Split path into directory name and parent directory inode */
     if (strip_path(dirname, pathname, &parent_dir) != 0) {
+        sys_printx("\nmkdir: strip_path failed");
         return -1;
     }
-    if (dirname[0] == '\0') {
-        return -1;
-    }
-    if (strcmp(dirname, ".") == 0 || strcmp(dirname, "..") == 0) {
-        return -1;
-    }
-    if ((parent_dir->i_mode & I_TYPE_MASK) != I_DIRECTORY) {
-        return -1;
-    }
-    if (find_in_dir(parent_dir, dirname, super_b->dir_ent_size) > 0) {
-        return -1;
-    }
-  
+
+
     /* 3. Allocate a new inode number */
     inode_nr = alloc_inode();
     if (inode_nr < 0) {
+        sys_printx("\nmkdir: failed to allocate inode");
         return -1;
     }
-  
+
+
+
     /* 4. Get a free inode slot from the cache */
     new_dir = get_inode_slot();
     if (!new_dir) {
+        sys_printx("\nmkdir: no free inode slots in cache");
+        free_inode(inode_nr);
         return -1;
     }
+
   
     /* 5. Allocate a data block for the directory content */
     block_nr = alloc_block();
     if (block_nr < 0) {
+        sys_printx("\nmkdir: no free blocks");
+        free_inode(inode_nr);
         return -1;
     }
   
     /* 6. Initialize the inode for the directory, specifically, inode->imode --> I_DIRECTORY (include/const.h) */
     memset(new_dir, 0, sizeof(struct inode));
     new_dir->i_mode = I_DIRECTORY;
-    new_dir->i_size = DIR_ENTRY_SIZE * 2;
+    new_dir->i_size = DIR_ENTRY_SIZE * 2; /* Initially contains "." and ".." */
     new_dir->i_start_block = block_nr;
     new_dir->i_nr_blocks = 1;
-    new_dir->i_direct[0] = block_nr;
-    for (int i = 1; i < INODE_DIRECT_COUNT; i++) {
-        new_dir->i_direct[i] = 0;
-    }
-    new_dir->i_indirect = 0;
-    new_dir->i_cnt = 1;
     new_dir->i_num = inode_nr;
+    new_dir->i_cnt = 1;
+    // new_dir->i_direct[0] = block_nr;
+    for (int i = 0; i < INODE_DIRECT_COUNT; i++)
+        new_dir->i_direct[i] = (i == 0) ? block_nr : 0;
+    new_dir->i_indirect = 0;
 
     /* 7. Write the inode to disk */
     if (write_inode_to_disk(new_dir) != 0) {
+        sys_printx("\nmkdir: failed to write inode to disk");
+        free_inode(inode_nr);
+        free_block(block_nr);
         return -1;
     }
+
 
     /* 8. Initialize the directory data block with "." and ".." entries. 
           You can use kmalloc(super_b->block_size) in kernel/page.c to allocate a buffer.
           For example: block_buf = (u8 *)kmalloc(super_b->block_size); */
     block_buf = (u8 *)kmalloc(super_b->block_size);
-    if (!block_buf) {
+    if (!block_buf) 
         return -1;
-    }
     memset(block_buf, 0, super_b->block_size);
-    struct dir_entry *de = (struct dir_entry *)block_buf;
-    de[0].inode_nr = inode_nr;
-    strcpy(de[0].name, ".");
-    de[1].inode_nr = parent_dir->i_num;
-    strcpy(de[1].name, "..");
-    if (write_through(block_nr, block_buf, super_b->block_size) != 0) {
-        free_tmp_block(block_buf);
-        return -1;
-    }
-    free_tmp_block(block_buf);
+
+    struct dir_entry *pde = (struct dir_entry *)block_buf;
+    
+    pde->inode_nr = inode_nr;
+    strcpy(pde->name, ".");
+    
+    pde++;
+    pde->inode_nr = parent_dir->i_num;
+    strcpy(pde->name, "..");
+
+    write_through(block_nr, block_buf, super_b->block_size);
+    
    
 
     /* 9. Add the directory entry in the parent directory */
     if (add_dir_entry(parent_dir, dirname, inode_nr) != 0) {
+        sys_printx("\nmkdir: add_dir_entry failed");
+        free_inode(inode_nr);
+        free_block(block_nr);
         return -1;
     }
- 
+
+
     sys_printx("\nmkdir: directory created successfully");
     return 0;
 }
@@ -190,50 +188,51 @@ PUBLIC int sys_mkdir(char *pathname)
 PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
 {
     /*1. Checks validity: It first ensures the file descriptor (fd) is valid, the file is open, and the mode allows reading/writing.*/
-    if (fd < 0 || fd >= NR_FILES || current->filp[fd] == 0 || buf == 0 || count < 0) {
+    if (fd < 0 || fd >= NR_FILES) {
+        sys_printx("\nsys_rdwt: invalid fd\n");
         return -1;
     }
-    if (io_type != READ && io_type != WRITE) {
+
+    if (current->filp[fd] == 0) {
+        sys_printx("\nsys_rdwt: file not open\n"); 
         return -1;
-    }
-    if (!(current->filp[fd]->fd_mode & O_RDWR)) {
+    } 
+
+    struct file_desc *f_desc = current->filp[fd];
+
+    /* 检查读写权限 */
+    if (!(current->filp[fd]->fd_mode & O_RDWR))
         return -1;
-    }
-    if (count == 0) {
-        return 0;
-    }
 
     /*2. Gets file info: Retrieves the file’s inode (metadata) and current position (pos).*/
-    struct file_desc *f = current->filp[fd];
-    struct inode *inode = f->fd_inode;
-    int pos = f->fd_pos;
-    int block_size = BLOCK_SIZE;
-    int bytes_done = 0;
-    int bytes_target;
-    u8 *block_buf;
+    struct inode *pin = f_desc->fd_inode;
 
-    if (!inode) {
-        return -1;
-    }
-
-    block_buf = (u8 *)kmalloc(block_size);
-    if (!block_buf) {
-        return -1;
-    }
+    int pos = f_desc->fd_pos;
 
     /*3. Determines limits:  For read: You can only read up to the file’s current size.    *
     /*   For write: You can extend the file, but only up to the number of allocated blocks.*
     /*   If more space is needed, new blocks are allocated dynamically.                    */
     if (io_type == READ) {
-        if (pos >= inode->i_size) {
-            free_tmp_block(block_buf);
+        if (pos >= pin->i_size)
             return 0;
-        }
-        bytes_target = min(count, inode->i_size - pos);
-    } else {
-        bytes_target = count;
+        if (pos + count > pin->i_size)
+            count = pin->i_size - pos;
     }
-   
+
+    if (io_type == WRITE) {
+        int end_pos = pos + count;
+        int needed_blocks =
+            (end_pos + BLOCK_SIZE - 1) >> BLOCK_SIZE_SHIFT;
+        for (int i = 0; i < needed_blocks; i++) {
+            int phys = get_block_nr(pin, i);
+            if (phys <= 0) {
+                if (alloc_block_for_inode(pin, i) < 0) {
+                    sys_printx("\nsys_rdwt: alloc block failed\n");
+                    return -1;
+                }
+            }
+        }
+    }
 
     /*4. Block-level processing: 
          Files are stored in blocks. The function calculates which blocks need to be   *
@@ -242,67 +241,79 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
          (2) Copies data between the user buffer and the block buffer (generated by    *  
              kmalloc()).                                                               *
          (3) For writing, saves the updated block back to disk (using write_block()).  */
-    while (bytes_done < bytes_target) {
+    int bytes_done = 0;
+    u8 *block_buf = (u8 *)kmalloc(BLOCK_SIZE);
+    while (bytes_done < count) {
         int cur_pos = pos + bytes_done;
-        int logical = cur_pos >> BLOCK_SIZE_SHIFT;
-        int in_block_off = cur_pos & (block_size - 1);
-        int chunk = min(bytes_target - bytes_done, block_size - in_block_off);
-        int phys_block = get_block_nr(inode, logical);
-        if (io_type == WRITE && phys_block <= 0) {
-            phys_block = alloc_block_for_inode(inode, logical);
-            if (phys_block < 0) {
-                break;
-            }
-            if (logical == 0 && inode->i_start_block == 0) {
-                inode->i_start_block = phys_block;
-            }
-        }
-
-        if (io_type == READ) {
-            if (phys_block <= 0) {
-                memset(block_buf, 0, block_size);
-            } else if (read_block(phys_block, block_buf, block_size) != 0) {
-                break;
-            }
-            memcpy(((u8 *)buf) + bytes_done, block_buf + in_block_off, chunk);
-        } else {
-            if (in_block_off != 0 || chunk != block_size) {
-                if (read_block(phys_block, block_buf, block_size) != 0) {
-                    memset(block_buf, 0, block_size);
-                }
+        int logical_block =
+            cur_pos >> BLOCK_SIZE_SHIFT;
+        int block_offset =
+            cur_pos & (BLOCK_SIZE - 1);
+        int bytes_left = count - bytes_done;
+        int bytes_this_round =
+            BLOCK_SIZE - block_offset;
+        if (bytes_this_round > bytes_left)
+            bytes_this_round = bytes_left;
+        int phys_block =
+            get_block_nr(pin, logical_block);
+        /* READ hole -> 返回 0 */
+        if (phys_block <= 0) {
+            if (io_type == READ) {
+                memset(block_buf, 0, BLOCK_SIZE);
             } else {
-                memset(block_buf, 0, block_size);
+                sys_printx("\nsys_rdwt: invalid write block\n");
+                return -1;
             }
-            memcpy(block_buf + in_block_off, ((u8 *)buf) + bytes_done, chunk);
-            if (write_block(phys_block, block_buf, block_size) != 0) {
-                break;
+        } else {
+            /* 读取 block */
+            if (read_block(phys_block,
+                           block_buf,
+                           BLOCK_SIZE) != 0) {
+                sys_printx("\nsys_rdwt: read_block failed\n");
+                return -1;
             }
         }
 
-        bytes_done += chunk;
+        /* READ */
+        if (io_type == READ) {
+            memcpy(
+                (u8 *)buf + bytes_done,
+                block_buf + block_offset,
+                bytes_this_round
+            );
+        } else {
+            /* WRITE */
+            memcpy(
+                block_buf + block_offset,
+                (u8 *)buf + bytes_done,
+                bytes_this_round
+            );
+            if (write_block(phys_block,
+                            block_buf,
+                            BLOCK_SIZE) != 0) {
+
+                sys_printx("\nsys_rdwt: write_block failed\n");
+                return -1;
+            }
+        }
+        bytes_done += bytes_this_round;
     }
-    
 
     /*5. Updates metadata:                                                                  *                                     
          (1) Advances the file position in memory (filp[fd]->fd_pos).                       *
          (2) If writing extends the file size, updates the inode and writes it back to disk.*/
-    f->fd_pos = pos + bytes_done;
+    f_desc->fd_pos += bytes_done;
 
     if (io_type == WRITE) {
-        if (f->fd_pos > inode->i_size) {
-            inode->i_size = f->fd_pos;
-        }
-        if (bytes_done > 0) {
-            if (write_inode_to_disk(inode) != 0) {
-                free_tmp_block(block_buf);
+        if (f_desc->fd_pos > pin->i_size) {
+            pin->i_size = f_desc->fd_pos;
+            if (write_inode_to_disk(pin) != 0) {
+                sys_printx("\nsys_rdwt: write inode failed\n");
                 return -1;
             }
         }
     }
 
-   
-    /*6. Returns: The number of bytes successfully read or written.                     */
-    free_tmp_block(block_buf);
     return bytes_done;
 }
 
@@ -634,7 +645,6 @@ PRIVATE int read_block(int block_nr, void* buf, int bytes) {
     if (bytes > BLOCK_SIZE) return -1;
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
 	if (read_through(block_nr, block_buf, bytes) != 0) {
-		free_tmp_block(block_buf);
 		return -1;
 	}
 
@@ -642,7 +652,6 @@ PRIVATE int read_block(int block_nr, void* buf, int bytes) {
     memcpy(buf, block_buf, bytes);
     // 将数据加入缓存（干净块）
     cache_add(block_nr, (u8*)block_buf, 0);
-	free_tmp_block(block_buf);
     return 0;
 }
 
@@ -653,20 +662,19 @@ PRIVATE int write_through(int block_nr, void* buf, int bytes) {
         return -1;
     }
 
-    /* 构造请求并交给 TASK_HD 处理，硬盘中断只会通知 TASK_HD。 */
+    // 构造请求
     struct hd_request req;
-    req.pid = current->pid;
-    req.io_type = DEV_WRITE;
+    req.pid = current->pid;               // 当前进程的 PID
+    req.io_type = DEV_WRITE;          // 写入操作
     req.block_nr = block_nr;
     req.bytes = bytes;
     req.buf = buf;
 
-    if (enqueue_hd_request(&req) != 0) {
-        return -1;
-    }
-
-    block(current);
-
+    // 插入队列
+    enqueue_hd_request(&req);
+	
+	block(current);
+    
 	return 0;   // 成功
 }
 
@@ -677,19 +685,18 @@ PRIVATE int read_through(int block_nr, void* buf, int bytes) {
         return -1;
     }
 
-    /* 构造请求并交给 TASK_HD 处理，硬盘中断只会通知 TASK_HD。 */
+    // 构造请求
     struct hd_request req;
     req.pid = current->pid;
-    req.io_type = DEV_READ;
+    req.io_type = DEV_READ;      // 读操作
     req.block_nr = block_nr;
     req.bytes = bytes;
     req.buf = buf;
 
-    if (enqueue_hd_request(&req) != 0) {
-        return -1;
-    }
-
-    block(current);
+    // 插入队列
+    enqueue_hd_request(&req);
+	
+	block(current);
     
 	return 0;
 }
@@ -1025,7 +1032,6 @@ int alloc_inode(void)
         int block_nr = bitmap_start + block_idx;
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0) {
-            free_tmp_block(block_buf);
             return -1;
         }
 
@@ -1049,15 +1055,12 @@ int alloc_inode(void)
                     /* 设置该位为1 */
                     block_buf[byte] |= (1 << bit);
                     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0) {
-                        free_tmp_block(block_buf);
                         return -1;
                     }
-                    free_tmp_block(block_buf);
                     return inode_nr;
                 }
             }
         }
-        free_tmp_block(block_buf);
     }
 
     /* 没有空闲inode */
@@ -1098,17 +1101,12 @@ int alloc_block(void)
                     /* 设置位图 */
                     block_buf[byte] |= (1 << bit);
                     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
-                    {
-                        free_tmp_block(block_buf);
                         return -1;
-                    }
 
-                    free_tmp_block(block_buf);
                     return alloc_block_nr;
                 }
             }
         }
-        free_tmp_block(block_buf);
     }
     return -1;  /* 无空闲块 */
 }
@@ -1151,28 +1149,22 @@ static int alloc_block_for_inode(struct inode *inode, int logical)
         if (!zero_buf) return -1;
         memset(zero_buf, 0, block_size);
         if (write_through(indirect_block, zero_buf, block_size) != 0) {
-            free_tmp_block(zero_buf);
             return -1;
         }
-        free_tmp_block(zero_buf);
     }
 
     /* 读取间接块 */
     u32 *indirect = (u32*)kmalloc(block_size);
     if (!indirect) return -1;
     if (read_through(inode->i_indirect, indirect, block_size) != 0) {
-        free_tmp_block(indirect);
         return -1;
     }
 
     /* 设置对应指针 */
     indirect[indirect_index] = new_block;
     if (write_through(inode->i_indirect, indirect, block_size) != 0) {
-        free_tmp_block(indirect);
         return -1;
     }
-
-    free_tmp_block(indirect);
 
     inode->i_nr_blocks++;
     return new_block;
@@ -1264,17 +1256,10 @@ static int write_inode_to_disk(struct inode *inode)
     /* 先读取整个块，因为可能只修改部分数据 */
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
-    {
-        free_tmp_block(block_buf);
         return -1;
-    }
     memcpy(block_buf + offset, inode, super_b->inode_size);
     if (write_through(block_nr, block_buf, BLOCK_SIZE) != 0)
-    {
-        free_tmp_block(block_buf);
         return -1;
-    }
-    free_tmp_block(block_buf);
     return 0;
 }
 
@@ -1322,13 +1307,8 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             return -1;
         }
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
-        if (!block_buf) {
-            sys_printx("add_dir_entry: kmalloc failed\n");
-            return -1;
-        }
         if (read_through(phys_block, block_buf, block_size) != 0) {
             sys_printx("read_block failed in add_dir_entry\n");
-            free_tmp_block(block_buf);
             return -1;
         }
 
@@ -1350,20 +1330,16 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
                 //sys_write_int_routine(entry->inode_nr);
                 if (write_through(phys_block, block_buf, block_size) != 0) {
                     sys_printx("write_through failed in add_dir_entry\n");
-                    free_tmp_block(block_buf);
                     return -1;
                 }
                 dir->i_size += DIR_ENTRY_SIZE;
                 if (write_inode_to_disk(dir) != 0) {
                     sys_printx("\nwrite_inode_to_disk failed in add_dir_entry\n");
-                    free_tmp_block(block_buf);
                     return -1;
                 }
-                free_tmp_block(block_buf);
                 return 0;
             }
         }
-        free_tmp_block(block_buf);
     }
 
     /* 没有空闲项，需要扩展目录，分配新块 */
@@ -1392,33 +1368,22 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
             dir->i_indirect = indirect_block;
             /* 初始化间接块为零 */
             u8*block_buf2 = (u8*) kmalloc(BLOCK_SIZE);
-            if (!block_buf2) {
-                return -1;
-            }
             memset(block_buf2, 0, block_size);
             if (write_through(indirect_block, block_buf2, block_size) != 0) {
-                free_tmp_block(block_buf2);
                 return -1;
             }
-            free_tmp_block(block_buf2);
         }
         u8*block_buf3 = (u8*) kmalloc(BLOCK_SIZE);
-        if (!block_buf3) {
-            return -1;
-        }
         /* 读取间接块 */
         if (read_through(dir->i_indirect, block_buf3, block_size) != 0) {
-            free_tmp_block(block_buf3);
             return -1;
         }
         u32 *indirect = (u32 *)block_buf3;
         int index_in_indirect = new_block_idx - INODE_DIRECT_COUNT;
         indirect[index_in_indirect] = new_block;
         if (write_through(dir->i_indirect, block_buf3, block_size) != 0) {
-            free_tmp_block(block_buf3);
             return -1;
         }
-        free_tmp_block(block_buf3);
     } else {
         /* 不支持二级间接块 */
         sys_printx("directory too large, indirect block not supported\n");
@@ -1429,33 +1394,22 @@ static int add_dir_entry(struct inode *dir, char *name, int inode_nr)
     dir->i_size += block_size;
 
     u8*block_buf4 = (u8*) kmalloc(BLOCK_SIZE);
-    if (!block_buf4) {
-        return -1;
-    }
     /* 初始化新块的所有目录项为0 */
     memset(block_buf4, 0, block_size);
     if (write_through(new_block, block_buf4, block_size) != 0) {
         /* 回滚 inode 更改？简化处理，返回失败 */
-        free_tmp_block(block_buf4);
         return -1;
     }
-    free_tmp_block(block_buf4);
 
     /* 在新块的第一个目录项中写入新条目 */
     u8*block_buf5 = (u8*) kmalloc(BLOCK_SIZE);
-    if (!block_buf5) {
-        return -1;
-    }
-    memset(block_buf5, 0, block_size);
     struct dir_entry *new_entry = (struct dir_entry *)block_buf5;
     new_entry->inode_nr = inode_nr;
     strcpy(new_entry->name, name);
     new_entry->name[MAX_FILENAME_LEN - 1] = '\0';
     if (write_through(new_block, block_buf5, block_size) != 0) {
-        free_tmp_block(block_buf5);
         return -1;
     }
-    free_tmp_block(block_buf5);
 
     /* 更新目录 inode 到磁盘 */
     if (write_inode_to_disk(dir) != 0) {
@@ -1479,7 +1433,6 @@ PRIVATE void read_super_block()
 	u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
     int ret = read_through(SUPER_BLOCK_NR, block_buf, BLOCK_SIZE);
 	memcpy(sb, block_buf, SUPER_BLOCK_SIZE);
-	free_tmp_block(block_buf);
 }
 
 /*****************************************************************************
@@ -1572,17 +1525,12 @@ static struct inode *read_inode(int inode_nr, u32 inode_region_start, u32 inode_
     int offset = block_offset % BLOCK_SIZE;
     u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
     if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0)
-    {
-        free_tmp_block(block_buf);
         return NULL;
-    }
 
     struct inode *new_inode = &inode_table[free_slot];
     memcpy(new_inode, block_buf + offset, inode_size);
     new_inode->i_num = inode_nr;
     new_inode->i_cnt = 1;                           /* 初始引用计数为 1 */
-
-    free_tmp_block(block_buf);
 
     return new_inode;
 }
@@ -1610,13 +1558,10 @@ static int get_block_nr(struct inode *inode, int block_index) {
         if (inode->i_indirect == 0) return -1;   /* 间接块未分配 */
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(inode->i_indirect, block_buf, BLOCK_SIZE) != 0) {
-            free_tmp_block(block_buf);
             return -1;
         }
         u32 *ptr = (u32 *)block_buf;
-        int ret = ptr[indirect_index];
-        free_tmp_block(block_buf);
-        return ret;
+        return ptr[indirect_index];
     }
 
     /* 暂不支持二级间接块 */
@@ -1642,7 +1587,6 @@ static int find_in_dir(struct inode *dir_inode, char *name,
         if (block_nr < 0) return -1;
         u8*block_buf = (u8*) kmalloc(BLOCK_SIZE);
         if (read_through(block_nr, block_buf, BLOCK_SIZE) != 0) {
-            free_tmp_block(block_buf);
             return -1;
         }
 
@@ -1655,12 +1599,9 @@ static int find_in_dir(struct inode *dir_inode, char *name,
             //sys_printx("\nentry->name is");
             //sys_printx(entry->name);
             if (strcmp(entry->name, name) == 0) {
-                int ret = entry->inode_nr;
-                free_tmp_block(block_buf);
-                return ret;
+                return entry->inode_nr;
             }
         }
-        free_tmp_block(block_buf);
     }
     return -1;
 }
