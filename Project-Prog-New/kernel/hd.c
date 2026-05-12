@@ -575,22 +575,15 @@ PUBLIC int dequeue_hd_request(struct hd_request* req) {
     return 0;
 }
 
-/**
- * 根据绝对字节位置找到对应的设备号和分区内偏移
- * @param block_nr  	块位置
- * @param dev_out       输出设备号
- * @param pos_out       输出分区内字节偏移
- * @return 0 成功，-1 失败（未找到匹配分区）
- */
-static int find_partition(int block_nr, int* dev_out, u64* pos_out) {
-    int drive = 0;  /* 当前只支持一个硬盘 */
+static int find_p(int block_nr, int* dev_out, u64* pos_out) {
+    int drive = 0;
     struct hd_info* hdi = &hd_info[drive];
     int i;
     u64 base_byte, size_byte;
 	u64 relative_pos = block_nr * BLOCK_SIZE;
 	u64 end_pos = 0;
 	u64 start_pos = 0;
-	/* 先检查主分区 */
+
 	base_byte = (u64)hdi->primary[1].base * SECTOR_SIZE;
 	size_byte = (u64)hdi->primary[1].size * SECTOR_SIZE;
 	start_pos = 0;
@@ -600,7 +593,6 @@ static int find_partition(int block_nr, int* dev_out, u64* pos_out) {
 		*pos_out = relative_pos;
 		return 0;
 	} else {
-    	/* 再检查逻辑分区（0 ~ NR_SUB_PER_DRIVE-1） */
     	for (i = 0; i < NR_SUB_PER_DRIVE; i++) {
         	base_byte = (u64)hdi->logical[i].base * SECTOR_SIZE;
         	size_byte = (u64)hdi->logical[i].size * SECTOR_SIZE;
@@ -608,13 +600,13 @@ static int find_partition(int block_nr, int* dev_out, u64* pos_out) {
 			start_pos = end_pos;
 			end_pos += size_byte;
         	if (relative_pos < end_pos) {
-            	*dev_out = MINOR_hd1a + i;  /* 逻辑分区设备号 */
+            	*dev_out = MINOR_hd1a + i; 
             	*pos_out = relative_pos - start_pos;
             	return 0;
         	}
     	}
 	}
-    return -1;  /* 未找到 */
+    return -1; 
 }
 
 
@@ -627,7 +619,7 @@ PUBLIC void sys_hd_routine() {
     struct hd_request req;
     int dev = 0;
     u64 pos = 0;
-	/* 仅在第一次调用时打开硬盘 */
+
     if (!hd_opened) {
         sys_hd_open(MINOR(ROOT_DEV));
         hd_opened = 1;
@@ -639,11 +631,8 @@ PUBLIC void sys_hd_routine() {
     }
       
 
-	//sys_printx("\nrequest queue has request");
-    /* 根据绝对位置找到分区和设备号 */
-    if (find_partition(req.block_nr, &dev, &pos) != 0) {
-        /* 分区错误，无法处理，直接唤醒进程并返回（可设置错误码） */
-        // 注意：此处可能需要将错误信息返回给进程，简单起见直接唤醒
+
+    if (find_p(req.block_nr, &dev, &pos) != 0) {
 		sys_printx("ERROR!");
 		unblock(&tasks[req.pid]);
         return;

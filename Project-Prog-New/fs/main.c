@@ -80,7 +80,6 @@ PUBLIC int sys_mkdir(char *pathname)
     struct inode *new_dir;
     int block_nr;
     u8 *block_buf;
-
     /* 1. Check if the path is valid and the directory does not already exist */
     int existing_inode = search_file(pathname);
     if (existing_inode == -1) {
@@ -91,32 +90,24 @@ PUBLIC int sys_mkdir(char *pathname)
         sys_printx("\nmkdir: directory already exists");
         return -1;
     }
-   
     /* 2. Split path into directory name and parent directory inode */
     if (strip_path(dirname, pathname, &parent_dir) != 0) {
         sys_printx("\nmkdir: strip_path failed");
         return -1;
     }
-
-
     /* 3. Allocate a new inode number */
     inode_nr = alloc_inode();
     if (inode_nr < 0) {
         sys_printx("\nmkdir: failed to allocate inode");
         return -1;
     }
-
-
-
     /* 4. Get a free inode slot from the cache */
     new_dir = get_inode_slot();
     if (!new_dir) {
         sys_printx("\nmkdir: no free inode slots in cache");
         free_inode(inode_nr);
         return -1;
-    }
-
-  
+    }  
     /* 5. Allocate a data block for the directory content */
     block_nr = alloc_block();
     if (block_nr < 0) {
@@ -124,7 +115,6 @@ PUBLIC int sys_mkdir(char *pathname)
         free_inode(inode_nr);
         return -1;
     }
-  
     /* 6. Initialize the inode for the directory, specifically, inode->imode --> I_DIRECTORY (include/const.h) */
     memset(new_dir, 0, sizeof(struct inode));
     new_dir->i_mode = I_DIRECTORY;
@@ -137,7 +127,6 @@ PUBLIC int sys_mkdir(char *pathname)
     for (int i = 0; i < INODE_DIRECT_COUNT; i++)
         new_dir->i_direct[i] = (i == 0) ? block_nr : 0;
     new_dir->i_indirect = 0;
-
     /* 7. Write the inode to disk */
     if (write_inode_to_disk(new_dir) != 0) {
         sys_printx("\nmkdir: failed to write inode to disk");
@@ -145,8 +134,6 @@ PUBLIC int sys_mkdir(char *pathname)
         free_block(block_nr);
         return -1;
     }
-
-
     /* 8. Initialize the directory data block with "." and ".." entries. 
           You can use kmalloc(super_b->block_size) in kernel/page.c to allocate a buffer.
           For example: block_buf = (u8 *)kmalloc(super_b->block_size); */
@@ -165,9 +152,6 @@ PUBLIC int sys_mkdir(char *pathname)
     strcpy(pde->name, "..");
 
     write_through(block_nr, block_buf, super_b->block_size);
-    
-   
-
     /* 9. Add the directory entry in the parent directory */
     if (add_dir_entry(parent_dir, dirname, inode_nr) != 0) {
         sys_printx("\nmkdir: add_dir_entry failed");
@@ -192,23 +176,17 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
         sys_printx("\nsys_rdwt: invalid fd\n");
         return -1;
     }
-
     if (current->filp[fd] == 0) {
         sys_printx("\nsys_rdwt: file not open\n"); 
         return -1;
     } 
-
     struct file_desc *f_desc = current->filp[fd];
-
     /* 检查读写权限 */
     if (!(current->filp[fd]->fd_mode & O_RDWR))
         return -1;
-
     /*2. Gets file info: Retrieves the file’s inode (metadata) and current position (pos).*/
     struct inode *pin = f_desc->fd_inode;
-
     int pos = f_desc->fd_pos;
-
     /*3. Determines limits:  For read: You can only read up to the file’s current size.    *
     /*   For write: You can extend the file, but only up to the number of allocated blocks.*
     /*   If more space is needed, new blocks are allocated dynamically.                    */
@@ -218,7 +196,6 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
         if (pos + count > pin->i_size)
             count = pin->i_size - pos;
     }
-
     if (io_type == WRITE) {
         int end_pos = pos + count;
         int needed_blocks =
@@ -233,7 +210,6 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
             }
         }
     }
-
     /*4. Block-level processing: 
          Files are stored in blocks. The function calculates which blocks need to be   *
          accessed based on the position and length. For each block:                    *
@@ -273,7 +249,6 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
                 return -1;
             }
         }
-
         /* READ */
         if (io_type == READ) {
             memcpy(
@@ -298,12 +273,10 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
         }
         bytes_done += bytes_this_round;
     }
-
     /*5. Updates metadata:                                                                  *                                     
          (1) Advances the file position in memory (filp[fd]->fd_pos).                       *
          (2) If writing extends the file size, updates the inode and writes it back to disk.*/
     f_desc->fd_pos += bytes_done;
-
     if (io_type == WRITE) {
         if (f_desc->fd_pos > pin->i_size) {
             pin->i_size = f_desc->fd_pos;
@@ -313,7 +286,6 @@ PUBLIC int sys_rdwt(int io_type, int fd, void *buf, int count)
             }
         }
     }
-
     return bytes_done;
 }
 
